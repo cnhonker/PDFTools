@@ -19,16 +19,18 @@ import ry.decoder.PDF417Decoder;
  *
  * @author ry
  */
-public class PDF417Worker extends SwingWorker<Map<Path, List<String>>, Map<Path, List<String>>> {
+public final class PDF417Worker extends SwingWorker<Map<Path, List<String>>, Map<Path, List<String>>> {
     
-    private static final PDF417Decoder DECODER = PDF417Decoder.getInstance();
-    private static final Map<Path, List<String>> RESULT = new HashMap<>();
-    private final Path pool;
+    private final PDF417Decoder decoder;
     private final PDF417AbstractTableModel model;
+    private final Map<Path, List<String>> result;
+    private final Path pool;
     
     public PDF417Worker(Path folder, PDF417AbstractTableModel tableModel) {
         pool = folder;
         model = tableModel;
+        decoder = new PDF417Decoder();
+        result = new HashMap<>();
     }
     
     @Override
@@ -38,18 +40,17 @@ public class PDF417Worker extends SwingWorker<Map<Path, List<String>>, Map<Path,
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
                 if (Files.probeContentType(file).equals(MediaType.PDF.toString())) {
-                    PDDocument pdf = PDDocument.load(file.toFile());
-                    DECODER.setDocument(pdf);
-                    DECODER.decodeAll();
-                    DECODER.close();
-                    Map<Path, List<String>> chunk = ImmutableMap.of(file, DECODER.getResultAsList());
-                    RESULT.putAll(chunk);
+                    decoder.setDocument(PDDocument.load(file.toFile()));
+                    decoder.decodeAll();
+                    decoder.close();
+                    Map<Path, List<String>> chunk = ImmutableMap.of(file, decoder.getResultAsList());
+                    result.putAll(chunk);
                     publish(chunk);
                 }
                 return super.visitFile(file, attrs);
             }
         });
-        return RESULT;
+        return result;
     }
     
     @Override

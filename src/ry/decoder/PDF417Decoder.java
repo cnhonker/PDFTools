@@ -7,6 +7,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.Binarizer;
 import com.google.zxing.BinaryBitmap;
@@ -28,62 +30,50 @@ import org.apache.pdfbox.pdmodel.PDPage;
  */
 public final class PDF417Decoder {
 
-    private static final PDF417Reader READER = new PDF417Reader();
-    private static final Map<DecodeHintType, Object> HINTS = new HashMap<>();
-    private static final List<PDPage> PAGES = new ArrayList<>();
-    private static final Map<Integer, String> RESULT = new HashMap<>();
-
-    static {
-        HINTS.put(DecodeHintType.POSSIBLE_FORMATS, BarcodeFormat.PDF_417);
-        HINTS.put(DecodeHintType.CHARACTER_SET, "ISO-8859-1");
-        HINTS.put(DecodeHintType.TRY_HARDER, Boolean.TRUE);
-    }
-
+    private static final Logger LOG = Logger.getLogger(PDF417Decoder.class.getName());
+    private final PDF417Reader reader;
+    private final Map<DecodeHintType, Object> hints;
+    private final List<PDPage> pages;
+    private final Map<Integer, String> result;
     private PDDocument doc;
 
-    private boolean hasError = false;
-
-    private static PDF417Decoder instance;
-
-    public static PDF417Decoder getInstance() {
-        if (PDF417Decoder.instance == null) {
-            instance = new PDF417Decoder();
-        }
-        instance.reset();
-        return instance;
+    public PDF417Decoder() {
+        doc = null;
+        reader = new PDF417Reader();
+        hints = new HashMap<>();
+        pages = new ArrayList<>();
+        result = new HashMap<>();
+        initEndcodingHints();
     }
 
-    private PDF417Decoder() {
-    }
-
-    private void reset() {
-        PAGES.clear();
-        hasError = false;
+    private void initEndcodingHints() {
+        hints.put(DecodeHintType.POSSIBLE_FORMATS, BarcodeFormat.PDF_417);
+        hints.put(DecodeHintType.CHARACTER_SET, "ISO-8859-1");
+        hints.put(DecodeHintType.TRY_HARDER, Boolean.TRUE);
     }
 
     public void setDocument(PDDocument document) {
-        reset();
         doc = document;
         loadPages();
     }
 
     private void loadPages() {
-        PAGES.clear();
+        pages.clear();
         List list = doc.getDocumentCatalog().getAllPages();
         for (Object o : list) {
             if (o instanceof PDPage) {
-                PAGES.add((PDPage) o);
+                pages.add((PDPage) o);
             }
         }
     }
 
     public Map<Integer, String> getResult() {
-        return Collections.unmodifiableMap(RESULT);
+        return Collections.unmodifiableMap(result);
     }
 
     public List<String> getResultAsList() {
         List<String> l = new ArrayList<>();
-        for (String s : RESULT.values()) {
+        for (String s : result.values()) {
             if (s != null && !s.isEmpty()) {
                 l.add(s);
             }
@@ -91,29 +81,26 @@ public final class PDF417Decoder {
         return l;
     }
 
-    public boolean hasError() {
-        return hasError;
-    }
-
-    public void decodeAll() {
-        for (PDPage p : PAGES) {
-            decode(p);
+    public void decodePage(int nr) {
+        if (nr > 0 && nr < pages.size()) {
+            decode(pages.get(nr));
         }
     }
 
-    public void decode(int nr) {
-        if (nr > 0 && nr < PAGES.size()) {
-            decode(PAGES.get(nr));
+    public void decodeAll() {
+        for (PDPage p : pages) {
+            decode(p);
         }
     }
 
     private void decode(PDPage page) {
         try {
             BufferedImage img = page.convertToImage(BufferedImage.TYPE_INT_ARGB, 600);
-            Result r = READER.decode(createBitmap(img), HINTS);
-            RESULT.put(PAGES.indexOf(page), r.getText());
+            Result r = reader.decode(createBitmap(img), hints);
+            result.put(pages.indexOf(page), r.getText());
         } catch (IOException | NotFoundException | FormatException | ChecksumException ex) {
-            RESULT.put(PAGES.indexOf(page), null);
+            result.put(pages.indexOf(page), null);
+            LOG.log(Level.SEVERE, null, ex);
         }
     }
 
@@ -122,7 +109,7 @@ public final class PDF417Decoder {
             try {
                 doc.close();
             } catch (IOException ex) {
-                ex.printStackTrace();
+                LOG.log(Level.SEVERE, null, ex);
             }
         }
     }
