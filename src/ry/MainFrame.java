@@ -5,6 +5,8 @@ import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.EventQueue;
 import javax.swing.JFrame;
+import ry.gui.table.PDF417DefaultTableModel;
+import ry.gui.table.PDF417TableUI;
 
 /**
  *
@@ -22,6 +24,7 @@ public class MainFrame extends JFrame {
         add(new CommandLine(), BorderLayout.SOUTH);
         pack();
         setLocationRelativeTo(null);
+        addTab("PDF417", new PDF417TableUI(new PDF417DefaultTableModel()));
     }
     
     public static void addTab(String title, Component c) {

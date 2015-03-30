@@ -1,13 +1,11 @@
 package ry.gui.table;
 
-import java.awt.BorderLayout;
 import java.awt.event.ActionEvent;
-import java.beans.PropertyChangeEvent;
-import java.beans.PropertyChangeListener;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.swing.AbstractAction;
@@ -16,11 +14,12 @@ import javax.swing.JButton;
 import javax.swing.JFileChooser;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
-import javax.swing.JProgressBar;
 import javax.swing.JScrollPane;
 import javax.swing.JSpinner;
 import javax.swing.JTable;
 import javax.swing.SpinnerNumberModel;
+import javax.swing.SwingUtilities;
+import com.google.common.collect.Lists;
 import com.google.common.io.Files;
 import net.miginfocom.swing.MigLayout;
 
@@ -28,36 +27,28 @@ import net.miginfocom.swing.MigLayout;
  *
  * @author ry
  */
-public class PDF417TableUI extends JPanel implements PropertyChangeListener {
+public final class PDF417TableUI extends JPanel {
 
     private static final Logger LOGGER = Logger.getLogger(PDF417TableUI.class.getName());
-    private final JProgressBar progressBar;
     private final JTable table;
     private final PDF417AbstractTableModel model;
+    private final PDF417ProgressTracker tracker;
+    private final ButtonBar bBar;
     private Path loc;
 
     public PDF417TableUI(PDF417AbstractTableModel tableModel) {
         model = tableModel;
         table = new JTable(model);
-        progressBar = new JProgressBar();
-        progressBar.setVisible(false);
+        bBar = new ButtonBar();
+        tracker = new PDF417ProgressTracker();
         layoutComponent();
     }
 
     private void layoutComponent() {
-        setLayout(new BorderLayout());
-        add(progressBar, BorderLayout.NORTH);
-        add(new JScrollPane(table), BorderLayout.CENTER);
-        add(new ButtonBar(), BorderLayout.SOUTH);
-    }
-
-    @Override
-    public void propertyChange(PropertyChangeEvent evt) {
-        if (evt.getPropertyName().equals("WORKDONE")) {
-            progressBar.setIndeterminate(false);
-            progressBar.setString(null);
-            progressBar.setVisible(false);
-        }
+        setLayout(new MigLayout("gap 0, hidemode 1"));
+        add(new JScrollPane(table), "push, grow, height 70%, wrap");
+        add(tracker, "push, grow, height 30%");
+        add(bBar, "dock south");
     }
 
     private final class ButtonBar extends JPanel {
@@ -77,7 +68,6 @@ public class PDF417TableUI extends JPanel implements PropertyChangeListener {
             label = new JLabel("Threads: ");
             threadCounter = getThreadCounter();
             fc = new JFileChooser();
-
             initComponent();
             layoutComponent();
         }
@@ -123,15 +113,17 @@ public class PDF417TableUI extends JPanel implements PropertyChangeListener {
                 public void actionPerformed(ActionEvent e) {
                     model.clear();
                     if (loc != null) {
-                        PDF417Worker worker = new PDF417Worker(loc, model);
-                        worker.addPropertyChangeListener(PDF417TableUI.this);
-                        progressBar.setVisible(true);
-                        progressBar.setIndeterminate(true);
-                        worker.execute();
+                        enableThreadCounter(false);
+                        executeWorkers();
                     }
                 }
             };
             return a;
+        }
+
+        private void enableThreadCounter(boolean enable) {
+            threadCounter.setEnabled(enable);
+            ((JSpinner.DefaultEditor) threadCounter.getEditor()).getTextField().setEditable(enable);
         }
 
         private Action save() {
@@ -161,6 +153,19 @@ public class PDF417TableUI extends JPanel implements PropertyChangeListener {
                 }
             };
             return a;
+        }
+
+        private void executeWorkers() {
+            int size = (int) threadCounter.getModel().getValue();
+            PDF417FileCollector dialog = new PDF417FileCollector(loc);
+            dialog.showDialog(SwingUtilities.getAncestorOfClass(java.awt.Window.class, this));
+            List<Path> pdfFiles = dialog.getResult();
+            List<List<Path>> parts = Lists.partition(pdfFiles, pdfFiles.size() / (size - 1));
+            for (List<Path> pList : parts) {
+                PDF417Worker w = new PDF417Worker(pList.toArray(new Path[pList.size()]), model);
+                tracker.addProgressBar(w);
+                w.execute();
+            }
         }
     }
 }
