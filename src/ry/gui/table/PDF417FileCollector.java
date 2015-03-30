@@ -101,7 +101,6 @@ final class PDF417FileCollector extends JDialog implements PropertyChangeListene
                     pdfFiles.clear();
                     LOGGER.log(Level.SEVERE, null, ex);
                 }
-                dispose();
                 break;
             default:
         }

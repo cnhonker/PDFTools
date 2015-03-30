@@ -160,6 +160,7 @@ public final class PDF417TableUI extends JPanel {
             PDF417FileCollector dialog = new PDF417FileCollector(loc);
             dialog.showDialog(SwingUtilities.getAncestorOfClass(java.awt.Window.class, this));
             List<Path> pdfFiles = dialog.getResult();
+            dialog.dispose();
             List<List<Path>> parts = Lists.partition(pdfFiles, pdfFiles.size() / (size - 1));
             for (List<Path> pList : parts) {
                 PDF417Worker w = new PDF417Worker(pList.toArray(new Path[pList.size()]), model);
