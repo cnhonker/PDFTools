@@ -23,6 +23,7 @@ import com.google.zxing.common.HybridBinarizer;
 import com.google.zxing.pdf417.PDF417Reader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
+import ry.ocr.OCREngine;
 
 /**
  *
@@ -35,6 +36,7 @@ public final class PDF417Decoder {
     private final Map<DecodeHintType, Object> hints;
     private final List<PDPage> pages;
     private final Map<Integer, String> result;
+    private OCREngine ocrEngine;
     private PDDocument doc;
 
     public PDF417Decoder() {
@@ -80,6 +82,14 @@ public final class PDF417Decoder {
         }
         return l;
     }
+    
+    public void setOCREnabled(boolean enable) {
+        if(enable && (ocrEngine == null)) {
+            ocrEngine = new OCREngine();
+        } else {
+            ocrEngine = null;
+        }
+    }
 
     public void decodePage(int nr) {
         if (nr > 0 && nr < pages.size()) {
@@ -94,12 +104,18 @@ public final class PDF417Decoder {
     }
 
     private void decode(PDPage page) {
+        BufferedImage img = null;
         try {
-            BufferedImage img = page.convertToImage(BufferedImage.TYPE_INT_ARGB, 600);
+            img = page.convertToImage(BufferedImage.TYPE_INT_ARGB, 600);
             Result r = reader.decode(createBitmap(img), hints);
             result.put(pages.indexOf(page), r.getText());
         } catch (IOException | NotFoundException | FormatException | ChecksumException ex) {
-            result.put(pages.indexOf(page), null);
+            String ocrResult = null;
+            if(ocrEngine != null && !(ex instanceof IOException)) {
+                ocrEngine.decodeImage(img);
+                ocrResult = ocrEngine.getResult();
+            }
+            result.put(pages.indexOf(page), ocrResult);
             LOG.log(Level.SEVERE, null, ex);
         }
     }

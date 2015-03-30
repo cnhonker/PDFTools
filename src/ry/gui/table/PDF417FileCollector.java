@@ -1,14 +1,18 @@
 package ry.gui.table;
 
+import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.event.ActionEvent;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
-import java.io.File;
+import java.io.IOException;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.logging.Level;
@@ -18,17 +22,18 @@ import javax.swing.Action;
 import javax.swing.JButton;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
+import javax.swing.JPanel;
 import javax.swing.JProgressBar;
 import javax.swing.SwingWorker;
+import com.google.common.net.MediaType;
 import net.miginfocom.swing.MigLayout;
-import org.apache.commons.io.FileUtils;
 import ry.utils.IconUtils;
 
 /**
  *
  * @author ry
  */
-final class PDF417FileCollector extends JDialog implements PropertyChangeListener {
+final class PDF417FileCollector extends JPanel implements PropertyChangeListener {
 
     private static final Logger LOGGER = Logger.getLogger(PDF417FileCollector.class.getName());
     private final JProgressBar progress;
@@ -36,6 +41,7 @@ final class PDF417FileCollector extends JDialog implements PropertyChangeListene
     private final JLabel pathLabel;
     private final FileWorker worker;
     private final List<Path> pdfFiles;
+    private final JDialog dialog;
 
     PDF417FileCollector(Path start) {
         worker = new FileWorker(start);
@@ -48,11 +54,18 @@ final class PDF417FileCollector extends JDialog implements PropertyChangeListene
         cancel = new JButton(cancelA());
         cancel.setBorderPainted(false);
         cancel.setContentAreaFilled(false);
-        setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
-        setPreferredSize(new Dimension(400, 200));
+        dialog = new JDialog();
         setLayout(new MigLayout());
-        setModal(true);
         layoutComponent();
+        initDialog();
+    }
+
+    private void initDialog() {
+        dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+        dialog.setPreferredSize(new Dimension(400, 200));
+        dialog.setLayout(new BorderLayout());
+        dialog.setModal(true);
+        dialog.getContentPane().add(this, BorderLayout.CENTER);
     }
 
     private Action cancelA() {
@@ -75,9 +88,9 @@ final class PDF417FileCollector extends JDialog implements PropertyChangeListene
 
     void showDialog(Component parent) {
         worker.execute();
-        pack();
-        setLocationRelativeTo(parent);
-        setVisible(true);
+        dialog.pack();
+        dialog.setLocationRelativeTo(parent);
+        dialog.setVisible(true);
     }
 
     List<Path> getResult() {
@@ -101,6 +114,7 @@ final class PDF417FileCollector extends JDialog implements PropertyChangeListene
                     pdfFiles.clear();
                     LOGGER.log(Level.SEVERE, null, ex);
                 }
+                dialog.dispose();
                 break;
             default:
         }
@@ -118,15 +132,30 @@ final class PDF417FileCollector extends JDialog implements PropertyChangeListene
 
         @Override
         protected List<Path> doInBackground() throws Exception {
-            Collection<File> files = FileUtils.listFiles(root.toFile(), new String[]{"pdf"}, true);
-            final int size = files.size();
+
+            Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                    String mime;
+                    try {
+                        mime = Files.probeContentType(file);
+                    } catch (IOException ex) {
+                        mime = null;
+                    }
+                    if (mime != null && mime.equals(MediaType.PDF.toString())) {
+                        filePath.add(file);
+                    }
+                    return super.visitFile(file, attrs);
+                }
+            });
+            final int size = filePath.size();
             double i = 0;
-            for (File f : files) {
+            for (Path p : filePath) {
                 i++;
                 double d = i / size;
                 setProgress((int) (d * 100));
-                filePath.add(f.toPath());
-                publish(f.getCanonicalPath());
+                publish(p.toString());
             }
             return filePath;
         }
@@ -140,7 +169,7 @@ final class PDF417FileCollector extends JDialog implements PropertyChangeListene
 
         @Override
         protected void done() {
-            firePropertyChange("DONE", false, true);
+            FileWorker.this.firePropertyChange("DONE", false, true);
         }
     }
 }

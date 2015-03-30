@@ -9,6 +9,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import javax.swing.SwingWorker;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.MediaType;
@@ -19,31 +20,40 @@ import ry.decoder.PDF417Decoder;
  *
  * @author ry
  */
-public final class PDF417Worker extends SwingWorker<Map<Path, List<String>>, Map<Path, List<String>>> {
-
+final class PDF417Worker extends SwingWorker<Map<Path, List<String>>, Map<Path, List<String>>> {
+    
     private final PDF417Decoder decoder;
     private final PDF417AbstractTableModel model;
     private final Map<Path, List<String>> result;
-    private final Path[] pool;
+    private final Queue<Path> pool;
     
 
-    public PDF417Worker(Path[] files, PDF417AbstractTableModel tableModel) {
+    PDF417Worker(Queue<Path> files, PDF417AbstractTableModel tableModel, boolean ocrState) {
         pool = files;
         model = tableModel;
         decoder = new PDF417Decoder();
+        decoder.setOCREnabled(ocrState);
         result = new HashMap<>();
     }
 
     @Override
     protected Map<Path, List<String>> doInBackground() throws Exception {
         double cnt = 0;
-        for(Path p : pool) {
-            walkFileTree(p);
+        while(!pool.isEmpty() && !isCancelled()) {
+            walkFileTree(pool.remove());
             cnt++;
-            double percent = cnt / pool.length;
+            double percent = cnt / pool.size();
             setProgress((int)(percent * 100));
         }
         return result;
+    }
+    
+    Queue<Path> getRemainingElements() {
+        return pool;
+    }
+    
+    void pushToQueue(Queue<Path> q) {
+        pool.addAll(q);
     }
 
     private void walkFileTree(Path p) throws IOException {

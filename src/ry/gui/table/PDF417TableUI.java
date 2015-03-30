@@ -1,16 +1,20 @@
 package ry.gui.table;
 
 import java.awt.event.ActionEvent;
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.swing.AbstractAction;
 import javax.swing.Action;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JFileChooser;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -41,6 +45,7 @@ public final class PDF417TableUI extends JPanel {
         table = new JTable(model);
         bBar = new ButtonBar();
         tracker = new PDF417ProgressTracker();
+        tracker.addPropertyChangeListener("ALLDONE", bBar);
         layoutComponent();
     }
 
@@ -51,12 +56,13 @@ public final class PDF417TableUI extends JPanel {
         add(bBar, "dock south");
     }
 
-    private final class ButtonBar extends JPanel {
+    private final class ButtonBar extends JPanel implements PropertyChangeListener {
 
         private final JFileChooser fc;
         private final JButton openButton;
         private final JButton decodeButton;
         private final JButton saveButton;
+        private final JCheckBox ocrSel;
         private final JLabel label;
         private final JSpinner threadCounter;
 
@@ -67,19 +73,23 @@ public final class PDF417TableUI extends JPanel {
             saveButton = new JButton(save());
             label = new JLabel("Threads: ");
             threadCounter = getThreadCounter();
+
             fc = new JFileChooser();
+            ocrSel = new JCheckBox("OCR Pass");
             initComponent();
             layoutComponent();
         }
 
         private void initComponent() {
             fc.setMultiSelectionEnabled(false);
+            ((JSpinner.DefaultEditor) threadCounter.getEditor()).getTextField().setEditable(false);
         }
 
         private void layoutComponent() {
             add(openButton, "sg");
             add(decodeButton, "sg");
             add(saveButton, "sg");
+            add(ocrSel);
             add(label);
             add(threadCounter, "sg");
         }
@@ -113,7 +123,8 @@ public final class PDF417TableUI extends JPanel {
                 public void actionPerformed(ActionEvent e) {
                     model.clear();
                     if (loc != null) {
-                        enableThreadCounter(false);
+                        enableButtonBar(false);
+                        tracker.removeAll();
                         executeWorkers();
                     }
                 }
@@ -121,9 +132,12 @@ public final class PDF417TableUI extends JPanel {
             return a;
         }
 
-        private void enableThreadCounter(boolean enable) {
+        private void enableButtonBar(boolean enable) {
+            openButton.setEnabled(enable);
+            decodeButton.setEnabled(enable);
+            saveButton.setEnabled(enable);
+            ocrSel.setEnabled(enable);
             threadCounter.setEnabled(enable);
-            ((JSpinner.DefaultEditor) threadCounter.getEditor()).getTextField().setEditable(enable);
         }
 
         private Action save() {
@@ -157,16 +171,25 @@ public final class PDF417TableUI extends JPanel {
 
         private void executeWorkers() {
             int size = (int) threadCounter.getModel().getValue();
+            size = size == 1 ? size : size - 1;
+
             PDF417FileCollector dialog = new PDF417FileCollector(loc);
             dialog.showDialog(SwingUtilities.getAncestorOfClass(java.awt.Window.class, this));
             List<Path> pdfFiles = dialog.getResult();
-            dialog.dispose();
-            List<List<Path>> parts = Lists.partition(pdfFiles, pdfFiles.size() / (size - 1));
-            for (List<Path> pList : parts) {
-                PDF417Worker w = new PDF417Worker(pList.toArray(new Path[pList.size()]), model);
-                tracker.addProgressBar(w);
-                w.execute();
+            int splitSize = pdfFiles.size() < size ? pdfFiles.size() : (pdfFiles.size() / size);
+            if (!pdfFiles.isEmpty() && splitSize > 0) {
+                List<List<Path>> parts = Lists.partition(pdfFiles, splitSize);
+                for (List<Path> pList : parts) {
+                    PDF417Worker w = new PDF417Worker(new LinkedList<>(pList), model, ocrSel.isSelected());
+                    tracker.addProgressBar(w);
+                    w.execute();
+                }
             }
+        }
+
+        @Override
+        public void propertyChange(PropertyChangeEvent evt) {
+            enableButtonBar(true);
         }
     }
 }
